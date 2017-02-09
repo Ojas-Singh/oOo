@@ -1,0 +1,1 @@
+Its going to be some kind of equation simulation software which use Biological Evolution Like thing for Solving Gerneralization Problem.
