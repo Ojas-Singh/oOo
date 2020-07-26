@@ -1,0 +1,66 @@
+sudo apt-get install kernel-package libncurses5-dev fakeroot wget xz-utils libncurses-dev libssl-dev flex bison
+sudo apt-get install libncurses-dev libssl-dev flex bison
+sudo apt-get install build-essential libnuma-dev
+
+linux-headers-5.4.52superrealtime-rt31_5.4.52superrealtime-rt31-10.00.Custom_amd64.deb
+linux-image-5.4.52superrealtime-rt31_5.4.52superrealtime-rt31-10.00.Custom_amd64.deb
+
+wget https://mirrors.edge.kernel.org/pub/linux/kernel/v5.x/linux-5.4.52.tar.xz
+
+wget https://mirrors.edge.kernel.org/pub/linux/kernel/projects/rt/5.4/patch-5.4.52-rt31.patch.xz
+
+tar xJf linux-5.4.52.tar.xz
+
+cd linux-5.4.52
+
+xzcat ../patch-5.4.52-rt31.patch.xz | patch -p1 --dry-run
+
+xzcat ../patch-5.4.52-rt31.patch.xz | patch -p1
+
+make menuconfig
+
+fakeroot make-kpkg -j 8 --initrd --append-to-version=superrealtime kernel-image kernel-headers
+
+cd ..
+
+sudo dpkg -i linux-image-4.4.231superrealtime-rt202_4.4.231superrealtime-rt202-10.00.Custom_amd64.deb linux-headers-4.4.231superrealtime-rt202_4.4.231superrealtime-rt202-10.00.Custom_amd64.deb
+
+reboot
+
+uname -a 
+
+getconf CLK_TCK
+git clone git://git.kernel.org/pub/scm/linux/kernel/git/clrkwllms/rt-tests.git
+cp ./cyclictest /usr/bin/
+./cyclictest -t1 -p 80 -n -i 10000 -l 10000
+curl -O https://raw.githubusercontent.com/angristan/wireguard-install/master/wireguard-install.sh
+
+chmod +x wireguard-install.sh
+
+./wireguard-install.sh
+
+Job for wg-quick@wg0.service failed because the control process exited with error code.
+See "systemctl status wg-quick@wg0.service" and "journalctl -xe" for details.
+Created symlink /etc/systemd/system/multi-user.target.wants/wg-quick@wg0.service → /lib/systemd/system/wg-quick@.service
+
+
+./wireguard-install.sh add-client
+
+
+nano /etc/sysctl.conf
+
+net.core.netdev_max_backlog=300000
+net.ipv4.tcp_rmem= 10240 87380 10485760
+net.ipv4.tcp_wmem= 10240 87380 10485760
+net.core.rmem_max=10485760
+net.core.wmem_max=10485760
+net.core.somaxconn= 300000
+net.ipv4.udp_rmem_min = 10240
+net.ipv4.udp_wmem_min = 10240
+net.ipv4.udp_mem= 10240 87380 10485760
+fs.file-max = 2097152
+net.ipv4.tcp_rfc1337 = 1
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+
+sysctl -p
