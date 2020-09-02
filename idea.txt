@@ -1,1 +1,0 @@
-oOo is a python based Software which takes set of data from an unknown experiment and give equation which is closest to real data governing equation.  
