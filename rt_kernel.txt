@@ -1,3 +1,6 @@
+
+https://towardsdatascience.com/faster-video-processing-in-python-using-parallel-computing-25da1ad4a01
+
 sudo apt-get install kernel-package libncurses5-dev fakeroot wget xz-utils libncurses-dev libssl-dev flex bison
 sudo apt-get install libncurses-dev libssl-dev flex bison
 sudo apt-get install build-essential libnuma-dev
