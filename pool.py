@@ -4,6 +4,7 @@ import imutils
 import cv2
 import numpy as np
 import time
+import multiprocessing
 from multiprocessing import Pool, Queue
 
 
@@ -14,7 +15,7 @@ def worker(input_q, output_q):
         fps.update()
         frame = input_q.get()
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)   
-        
+        time.sleep(.05)
         output = imutils.resize(frame, width=RESIZE, height=RESIZE)
         output_q.put(output)
 
@@ -23,22 +24,16 @@ def worker(input_q, output_q):
 
 
 if __name__ == '__main__':
-    qu_limit = 5
+    qu_limit = 100
     threadn = cv2.getNumberOfCPUs() 
     print("Threads : ", threadn)
     input_q = Queue(qu_limit)  # fps is better if queue is higher but then more lags
     output_q = Queue()
 
-    process1 = multiprocessing.Process(target=worker, args=[input_q, output_q])
-    process1.start()
+    for i in range(threadn-6):
+        p = multiprocessing.Process(target=worker, args=[input_q, output_q])
+        p.start()
 
-    process2 = multiprocessing.Process(target=worker, args=[input_q, output_q])
-    process2.start()
-
-    # for i in range(threadn):
-    #     t = Thread(target=worker, args=(input_q, output_q))
-    #     t.daemon = True
-    #     t.start()
 
     cam = xiapi.Camera()
     print('Opening first camera...')
@@ -66,7 +61,8 @@ if __name__ == '__main__':
             pass  # fill up queue
         else:
             data = output_q.get()                    
-            # cv2.imshow('Video', frame)
+            cv2.imshow('Video', data)
+            cv2.waitKey(1)
         fps.update()        
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
