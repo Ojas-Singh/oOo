@@ -11,9 +11,10 @@ import pickle
 import matplotlib
 import matplotlib.pyplot as plt
 from scipy.optimize import leastsq
+from numba import jit
 matplotlib.use("Qt5agg")
 
-
+@jit(nopython=True)
 def correlation_coefficient( patch1, patch2):
     product = np.mean((patch1 - patch1.mean()) * (patch2 - patch2.mean()))
     stds = patch1.std() * patch2.std()
@@ -22,10 +23,10 @@ def correlation_coefficient( patch1, patch2):
     else:
         product /= stds
         return product
-
+@jit(nopython=True)
 def gauss_erf(p,x,y):#p = [height, mean, sigma]
 	return y - p[0] * np.exp(-(x-p[1])**2 /(2.0 * p[2]**2))
-
+@jit(nopython=True)
 def gauss_eval(x,p):
 	return p[0] * np.exp(-(x-p[1])**2 /(2.0 * p[2]**2))
 
@@ -93,22 +94,23 @@ def graphdisplayworker(graph_q):
     data = [[],[]]
     ax = fig.add_subplot(111)
     fig.show()
-    i = 0
+    timestart = time.time()
     while True:
+        
         if quit:
             break
         for j in range(graph_q.qsize()):
             timestamp,centroid = graph_q.get()
-            data[0].append(i)
+            data[0].append(timestamp-timestart)
             data[1].append(centroid)
+        timenowplot = time.time()
         ax.plot(data[0], data[1], color='b')
-        plt.pause(0.05)
-        ax.set_xlim(left=max(0, i-50), right=i+10)
-        plt.pause(0.05)
+        plt.pause(0.02)
+        ax.set_xlim(left=max(0, timenowplot-timestart-3), right=timenowplot-timestart+1)
+        # plt.pause(0.05)
         plt.show(block=False)
-        time.sleep(0.1)
+        time.sleep(.005)
         cv2.waitKey(1)
-        i+=1
         
 def record(display_q):
     results = []
