@@ -19,14 +19,32 @@ def work(frame):
     
     return magnitude_spectrum
            
-        
-def aquirestack(roi,stacksize):
-    return stack
+def setKEITHLEY1(val1):
+        KEITHLEY1 = tmc_dac
+        if not KEITHLEY1: return
+        #Write a voltage value in mV to the KEITHLEY 2230G sourcemeter.
+        KEITHLEY1.write("INST:NSEL 1")
+        KEITHLEY1.write("VOLT %.3f"%(val1/1000.))
+        KEITHLEY1_VALUE = val1/1000. # V     
+
+def aquirestack(frame,roimain,roiref,stacksize,frame_count):
+    
+    KEITHLEY1_VALUE = 1
+    KEITHLEY1_VALUE_STEPSIZE = 0.005 #10mV
+    if frame_count < stacksize:
+        stack.append(frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])])
+        stackref.append(frame[int(roiref[1]):int(roiref[1]+roiref[3]), int(roiref[0]):int(roiref[0]+roiref[2])])
+        setKEITHLEY1(KEITHLEY1_VALUE*1000) #Volt to mV conversion
+        KEITHLEY1_VALUE += KEITHLEY1_VALUE_STEPSIZE
+        frame_count +=1
+    else:
+        setKEITHLEY1((KEITHLEY1_VALUE - KEITHLEY1_VALUE_STEPSIZE*stacksize/2)*1000) #Volt to mV conversion
+    
 
 
 
 if __name__ == '__main__':
-
+    
     tmc_dac = usbtmc.Instrument(0x05e6, 0x2230)
     tmc_dac.write("INSTrument:COMBine:OFF")
     tmc_dac.write("SYST:REM")
@@ -84,11 +102,9 @@ if __name__ == '__main__':
     print(roimain,roiref)
 
 
-    # for i in range(stacksize):
-    #     cam.get_image(img)
-    #     frame = 20*img.get_image_data_numpy()
-    #     stack.append(frame[int(roi[1]):int(roi[1]+roi[3]), int(roi[0]):int(roi[0]+roi[2])])
-    #     cv2.waitKey(1)
+    while frame_count == stacksize :
+        cam.get_image(img)
+        aquirestack(img.get_image_data_numpy(),roimain,roiref,stacksize,frame_count)
 
         
 
