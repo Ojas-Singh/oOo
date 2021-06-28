@@ -13,8 +13,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import leastsq
 import usbtmc
 from numba import jit
-matplotlib.use("GTK3agg")
-
+matplotlib.use("Qt5agg")
 
 def work(frame):
  
@@ -25,27 +24,15 @@ def work(frame):
     
     return magnitude_spectrum
            
-def setKEITHLEY1(val1):
-        KEITHLEY1 = tmc_dac
-        if not KEITHLEY1: return
-        #Write a voltage value in mV to the KEITHLEY 2230G sourcemeter.
-        KEITHLEY1.write("INST:NSEL 1")
-        KEITHLEY1.write("VOLT %.3f"%(val1/1000.))
-        KEITHLEY1_VALUE = val1/1000. # V     
+# def setKEITHLEY1(val1):
+        
+#         #Write a voltage value in mV to the KEITHLEY 2230G sourcemeter.
+#         tmc_dac.write("INST:NSEL 1")
+#         tmc_dac.write("VOLT %.3f"%(val1/1000.))
+#         KEITHLEY1_VALUE = val1/1000. # V     
 
-def aquirestack(frame,roimain,roiref,stacksize,frame_count):
-    
-    KEITHLEY1_VALUE = 1
-    KEITHLEY1_VALUE_STEPSIZE = 0.005 #10mV
-    if frame_count < stacksize:
-        stack.append(frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])])
-        stackref.append(frame[int(roiref[1]):int(roiref[1]+roiref[3]), int(roiref[0]):int(roiref[0]+roiref[2])])
-        setKEITHLEY1(KEITHLEY1_VALUE*1000) #Volt to mV conversion
-        KEITHLEY1_VALUE += KEITHLEY1_VALUE_STEPSIZE
-        frame_count +=1
-    else:
-        setKEITHLEY1((KEITHLEY1_VALUE - KEITHLEY1_VALUE_STEPSIZE*stacksize/2)*1000) #Volt to mV conversion
-    
+
+        # setKEITHLEY1((KEITHLEY1_VALUE - KEITHLEY1_VALUE_STEPSIZE*stacksize/2)*1000) #Volt to mV conversion
 @jit(nopython=True)
 def correlation_coefficient( patch1, patch2):
     product = np.mean((patch1 - patch1.mean()) * (patch2 - patch2.mean()))
@@ -55,15 +42,14 @@ def correlation_coefficient( patch1, patch2):
     else:
         product /= stds
         return product
-
 @jit(nopython=True)
 def gauss_erf(p,x,y):#p = [height, mean, sigma]
 	return y - p[0] * np.exp(-(x-p[1])**2 /(2.0 * p[2]**2))
-
 @jit(nopython=True)
 def gauss_eval(x,p):
 	return p[0] * np.exp(-(x-p[1])**2 /(2.0 * p[2]**2))
 
+# @jit(nopython=False)
 def gaussianFit(X,Y):
 	size = len(X)
 	maxy = max(Y)
@@ -82,62 +68,75 @@ def gaussianFit(X,Y):
 	except:
 		return None
 	if plsq[1] > 4:
-		print('fit failed')
+		# print('fit failed')
 		return None
 
 	par = plsq[0]
-	Xmore = np.linspace(X[0],X[-1],100)
-	Y = gauss_eval(Xmore, par)
+	# Xmore = np.linspace(X[0],X[-1],100)
+	# Y = gauss_eval(Xmore, par)
+    # Y = 1
+    # return par[1],Xmore,Y 
+	return par[1]
 
-	return par[1],Xmore,Y
 
 def worker(input_q, output_q,stack):
     RESIZE = 128
     while True:
         frameinfo = input_q.get() 
-        f = np.fft.fft2(frameinfo[1])
-        fshift = np.fft.fftshift(f)
-        magnitude_spectrum = 20*np.log(np.abs(fshift))
-        magnitude_spectrum = np.asarray(magnitude_spectrum, dtype=np.uint8)
-        centroid = None
-        R = 4 * RESIZE / 10
-        corr = []
-        for img in stack:
-            # corr.append(correlation_coefficient(img, comp_roi.getArrayRegion(magnitude_spectrum)))
-            corr.append(correlation_coefficient(img, magnitude_spectrum)) 
+        
+        if frameinfo[1] is not None :
+            # frame = cv2.resize(frameinfo[1],(RESIZE,RESIZE),interpolation = cv2.INTER_NEAREST)
+            f = np.fft.fft2(frameinfo[1])
+            fshift = np.fft.fftshift(f)
+            magnitude_spectrum = 20*np.log(np.abs(fshift))
+            magnitude_spectrum = np.asarray(magnitude_spectrum, dtype=np.uint8)
+            # print(magnitude_spectrum.shape)
+            centroid = None
+            R = 4 * RESIZE / 10
+            corr = []
+            l1= len(magnitude_spectrum[0])
+            l2= len(magnitude_spectrum[1])
+            # print(l1,l2)
+            for img in stack:
+                # corr.append(correlation_coefficient(img, comp_roi.getArrayRegion(magnitude_spectrum)))
+                corr.append(correlation_coefficient(img[int(l1*0.4):int(l1*0.6),int(l2*0.4):int(l2*0.6)], magnitude_spectrum[int(l1*0.4):int(l1*0.6),int(l2*0.4):int(l2*0.6)]))
+                # corr.append(correlation_coefficient(img, magnitude_spectrum))
 
-        X = np.array(range(len(stack)))
-        corr = np.array(corr)
-        corr -= min(corr)
-        #self.extracted_view.setData(X, corr)
-        try:
-            centroid, X, corr = gaussianFit(X, corr)
-            #self.fitted_view.setData(X, corr)
-            output_q.put([frameinfo[0],centroid])
-        except Exception as error:
-            print(error)
+            X = np.array(range(len(stack)))
+            corr = np.array(corr)
+            corr -= min(corr)
+            #self.extracted_view.setData(X, corr)
+            try:
+                # centroid, X, corr = gaussianFit(X, corr)
+                centroid = gaussianFit(X, corr)
+                #self.fitted_view.setData(X, corr)
+                output_q.put([frameinfo[0],centroid])
+            except Exception as error:
+                pass
+            
             
 def graphdisplayworker(graph_q):
-    fig = plt.figure()
+    fig = plt.figure(figsize=(16, 3))
     data = [[],[]]
     ax = fig.add_subplot(111)
     fig.show()
-    i = 0
+    timestart = time.time()
     while True:
+        
         if quit:
             break
         for j in range(graph_q.qsize()):
             timestamp,centroid = graph_q.get()
-            data[0].append(i)
+            data[0].append(timestamp-timestart)
             data[1].append(centroid)
-        ax.plot(data[0], data[1], color='b')
-        plt.pause(0.05)
-        ax.set_xlim(left=max(0, i-50), right=i+10)
-        plt.pause(0.05)
+            # data[1].append(random.random())
+        timenowplot = time.time()
+        ax.plot(data[0], data[1], color='b' ,linewidth=.2)
+        plt.pause(0.02)
+        ax.set_xlim(left=max(0, timenowplot-timestart-5), right=timenowplot-timestart+1.25)
+        # plt.pause(0.05)
         plt.show(block=False)
-        time.sleep(0.1)
-        cv2.waitKey(1)
-        i+=1
+        time.sleep(.02)
         
 def record(display_q):
     results = []
@@ -170,18 +169,34 @@ if __name__ == '__main__':
         tmc_dac = None
         print("KEITHLEY DAC: NOT FOUND")
         time.sleep(0.5)
-    try:
-        #tmc_dac.write("INSTrument:SELect CH1")
-        tmc_dac.write("INSTrument:SELect CH2")
-        #tmc_dac.write("APPLY CH1,0.0V,0.1A")
-        tmc_dac.write("APPLY CH2,0.0V,1.0A")
-        tmc_dac.write("OUTPUT ON")
-        tmc_dac.write("SYST:BEEP")
-        time.sleep(0.3)
-    except:
-        tmc_dac = None
-        print("KEITHLEY DAC: NOT FOUND")
-        time.sleep(0.5)
+
+    # try:
+    #     #tmc_dac.write("INSTrument:SELect CH1")
+    #     tmc_dac.write("INSTrument:SELect CH2")
+    #     #tmc_dac.write("APPLY CH1,0.0V,0.1A")
+    #     tmc_dac.write("APPLY CH2,0.0V,1.0A")
+    #     tmc_dac.write("OUTPUT ON")
+    #     tmc_dac.write("SYST:BEEP")
+    #     time.sleep(0.3)
+    # except:
+    #     tmc_dac = None
+    #     print("KEITHLEY DAC: NOT FOUND")
+    #     time.sleep(0.5)
+    def aquirestack(frame,roimain,roiref,stacksize,frame_count):
+    
+        KEITHLEY1_VALUE = 1
+        KEITHLEY1_VALUE_STEPSIZE = 0.005 #10mV
+        if frame_count < stacksize:
+            stack.append(frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])])
+            stackref.append(frame[int(roiref[1]):int(roiref[1]+roiref[3]), int(roiref[0]):int(roiref[0]+roiref[2])])
+            # setKEITHLEY1(KEITHLEY1_VALUE*1000) #Volt to mV conversion
+            tmc_dac.write("INST:NSEL 1")
+            tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE))
+            KEITHLEY1_VALUE += KEITHLEY1_VALUE_STEPSIZE
+            frame_count +=1
+        else:
+            tmc_dac.write("INST:NSEL 1")
+            tmc_dac.write("VOLT %.3f"%((KEITHLEY1_VALUE - KEITHLEY1_VALUE_STEPSIZE*stacksize/2)))
     cam = xiapi.Camera()
     print('Opening first camera...')
     cam.open_device()
@@ -190,8 +205,8 @@ if __name__ == '__main__':
     cam.set_param('height',512)
     cam.set_param('downsampling_type', 'XI_SKIPPING')
     cam.set_acq_timing_mode('XI_ACQ_TIMING_MODE_FREE_RUN')
-    qu_limit = 10
-    workers = 12
+    qu_limit = 50
+    workers = 48
     threadn = cv2.getNumberOfCPUs() 
     print("Threads : ", threadn)
     print("Workers Spawned : ", workers)
@@ -211,7 +226,7 @@ if __name__ == '__main__':
     R = multiprocessing.Process(target=record, args=[display_q],daemon = False)
     Drift = multiprocessing.Process(target=graphdisplayworker, args=[graph_q],daemon = False)
 
-    
+   
     
     img = xiapi.Image()
     print('Starting data acquisition...')
@@ -221,27 +236,43 @@ if __name__ == '__main__':
     frame = cv2.flip(frame, 0)  # flip the frame vertically
     frame = cv2.flip(frame, 1)
     roimain=cv2.selectROI("Main Bead select",frame)
+    cv2.destroyAllWindows()
     roiref =cv2.selectROI("Main ref select",frame)
     cv2.destroyAllWindows()
+    cv2.waitKey(2)
     print(roimain,roiref)
-
-
-    while frame_count == stacksize+1 :
+    # tmc_dac.write("INST:NSEL 1")
+    # tmc_dac.write("VOLT %.3f"%(0.5))
+    KEITHLEY1_VALUE = 1
+    KEITHLEY1_VALUE_STEPSIZE = 0.005 #10mV
+    while frame_count < stacksize :
+        
+        tmc_dac.write("INST:NSEL 1")
+        tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE))
+        KEITHLEY1_VALUE += KEITHLEY1_VALUE_STEPSIZE
+        frame_count +=1
+        time.sleep(0.3)
         cam.get_image(img)
         frame = img.get_image_data_numpy()
         frame = cv2.flip(frame, 0)  # flip the frame vertically
         frame = cv2.flip(frame, 1)
-        aquirestack(frame,roimain,roiref,stacksize,frame_count)
-
+        stack.append(work(frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])]))
+        stackref.append(work(frame[int(roiref[1]):int(roiref[1]+roiref[3]), int(roiref[0]):int(roiref[0]+roiref[2])]))
+    tmc_dac.write("INST:NSEL 1")
+    tmc_dac.write("VOLT %.3f"%((KEITHLEY1_VALUE - KEITHLEY1_VALUE_STEPSIZE*stacksize/2)))
+    print(len(stack))
+    cv2.destroyAllWindows()
     cv2.waitKey(2)
     for i in range(workers):
         p = multiprocessing.Process(target=worker, args=[input_q, output_q,stack],daemon = True)
         p.start()
         all_processes.append(p)
+    cv2.waitKey(2)
     R.start()
     D.start()
     fps = FPS().start()
-    while quit == False and frame_count <500:
+    cv2.waitKey(2)
+    while quit == False and frame_count <10000:
         cam.get_image(img)
         frame = img.get_image_data_numpy()
         frame = cv2.flip(frame, 0)  # flip the frame vertically
