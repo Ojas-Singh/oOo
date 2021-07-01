@@ -1,4 +1,4 @@
-from threading import stack_size
+
 from ximea import xiapi
 from imutils.video import FPS, fps
 import cv2
@@ -17,14 +17,30 @@ matplotlib.use("Qt5agg")
 import click
 import sys
 sys.tracebacklimit=0
-def work(frame):
- 
-    f = np.fft.fft2(frame)
-    fshift = np.fft.fftshift(f)
-    magnitude_spectrum = 20*np.log(np.abs(fshift))
-    magnitude_spectrum = np.asarray(magnitude_spectrum, dtype=np.uint8)
+
+def work(frame,stackref):
+    try:
+        f = np.fft.fft2(frame)
+        fshift = np.fft.fftshift(f)
+        magnitude_spectrum = 20*np.log(np.abs(fshift))
+        magnitude_spectrum = np.asarray(magnitude_spectrum, dtype=np.uint8)
+        centroid = None
+        corr = []
+        l1= len(magnitude_spectrum[0])
+        l2= len(magnitude_spectrum[1])
+        # print(l1,l2,len(stackref))
+        for img in stackref:
+            corr.append(correlation_coefficient(img[int(l1*0.40):int(l1*0.60),int(l2*0.40):int(l2*0.60)], magnitude_spectrum[int(l1*0.40):int(l1*0.60),int(l2*0.40):int(l2*0.60)]))
+        
+        X = np.array(range(len(stackref)))
+        corr = np.array(corr)
+        corr -= min(corr)
     
-    return magnitude_spectrum
+        centroid = gaussianFit(X, corr)
+        return centroid
+    except Exception as error:
+        pass
+    
 
 @jit(nopython=True)
 def correlation_coefficient( patch1, patch2):
@@ -122,13 +138,11 @@ def graphdisplayworker(graph_q):
             timestamp,centroid = graph_q.get()
             data[0].append(timestamp-timestart)
             data[1].append(centroid)
-            # data[1].append(random.random())
         timenowplot = time.time()
 
         ax.plot(data[0], data[1], color='b' ,linewidth=.2)
         plt.pause(0.5)
         ax.set_xlim(left=max(0, timenowplot-timestart-10), right=timenowplot-timestart+1.25)
-        # plt.pause(0.05)
         plt.show(block=False)
         time.sleep(.02)
        
@@ -147,12 +161,48 @@ def record(display_q):
         f = open("results.txt", "w")
         for i in results:
             f.write(str(i[0]-timestart)+" "+str(i[1])+"\n")
-        # with open('results.pkl', 'wb') as f:
-        #     pickle.dump(results, f)
         f.close()
         print("written to file results.pkl !")
 
-
+def drift(drift_q,stackref):
+    tmc_dac = usbtmc.Instrument(0x05e6, 0x2230)
+    tmc_dac.write("INSTrument:COMBine:OFF")
+    tmc_dac.write("SYST:REM")
+    tmc_id = tmc_dac.ask("*IDN?")
+    try:
+        tmc_dac.write("INSTrument:SELect CH1")
+        tmc_dac.write("INSTrument:SELect CH2")
+        tmc_dac.write("APPLY CH1,1.5V,0.1A")
+        tmc_dac.write("APPLY CH2,0.0V,0.0A")
+        tmc_dac.write("OUTPUT ON")
+        tmc_dac.write("SYST:BEEP")
+    #    time.sleep(0.3)
+    except:
+        tmc_dac = None
+        print("KEITHLEY DAC: NOT FOUND")
+        time.sleep(0.5)
+    KEITHLEY1_VALUE = 1.5
+    tmc_dac.write("INST:NSEL 1")
+    tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE))
+    list =[]
+    while True:
+        
+        centroid_list= []
+        for i in range(drift_q.qsize()):
+            list.append(drift_q.get())
+        if len(list) >10 :
+            for i in list :
+                pp = work(i,stackref)
+                if pp is not None:
+                    centroid_list.append(pp)
+            print(centroid_list)
+            while sum(centroid_list)/len(centroid_list) >60 :
+                tmc_dac.write("INST:NSEL 1")
+                tmc_dac.write("VOLT %.3f"%((KEITHLEY1_VALUE*1000 - 2)/1000.0))
+            if sum(centroid_list)/len(centroid_list) < 40:
+                tmc_dac.write("INST:NSEL 1")
+                tmc_dac.write("VOLT %.3f"%((KEITHLEY1_VALUE*1000 + 2)/1000.0))
+            list=[]
 
 if __name__ == '__main__':
 
@@ -164,44 +214,8 @@ if __name__ == '__main__':
     click.echo(click.style("  \___/ \____/ \___/ ", fg='red'))
 
 
-    stackflag = None
-    if len(sys.argv) > 2:
-        for i in range(len(sys.argv)):
-            if sys.argv[1] == "-S":
-                stackflag = sys.argv[2]
+    stackflag = True
     
-    tmc_dac = usbtmc.Instrument(0x05e6, 0x2230)
-    tmc_dac.write("INSTrument:COMBine:OFF")
-    tmc_dac.write("SYST:REM")
-    tmc_id = tmc_dac.ask("*IDN?")
-    try:
-        tmc_dac.write("INSTrument:SELect CH1")
-        tmc_dac.write("INSTrument:SELect CH2")
-        tmc_dac.write("APPLY CH1,1.0V,0.1A")
-        tmc_dac.write("APPLY CH2,0.0V,0.0A")
-        tmc_dac.write("OUTPUT ON")
-        tmc_dac.write("SYST:BEEP")
-    #    time.sleep(0.3)
-    except:
-        tmc_dac = None
-        print("KEITHLEY DAC: NOT FOUND")
-        time.sleep(0.5)
-
-
-    # def aquirestack(frame,roimain,roiref,stacksize,frame_count):
-    
-    #     KEITHLEY1_VALUE = 1
-    #     KEITHLEY1_VALUE_STEPSIZE = 0.005 #10mV
-    #     if frame_count < stacksize:
-    #         stack.append(frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])])
-    #         stackref.append(frame[int(roiref[1]):int(roiref[1]+roiref[3]), int(roiref[0]):int(roiref[0]+roiref[2])])
-    #         tmc_dac.write("INST:NSEL 1")
-    #         tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE))
-    #         KEITHLEY1_VALUE += KEITHLEY1_VALUE_STEPSIZE
-    #         frame_count +=1
-    #     else:
-    #         tmc_dac.write("INST:NSEL 1")
-    #         tmc_dac.write("VOLT %.3f"%((KEITHLEY1_VALUE - KEITHLEY1_VALUE_STEPSIZE*stacksize/2)))
     cam = xiapi.Camera()
     print('Opening first camera...')
     cam.open_device()
@@ -226,61 +240,26 @@ if __name__ == '__main__':
     output_q = Queue()
     display_q = Queue()
     graph_q = Queue()
+    drift_q = Queue(20)
     quit = False
     all_processes = []
-    
-    D = multiprocessing.Process(target=graphdisplayworker, args=[graph_q],daemon = True)
-    R = multiprocessing.Process(target=record, args=[display_q],daemon = True)
-    Drift = multiprocessing.Process(target=graphdisplayworker, args=[graph_q],daemon = True)
-
-   
-    
     img = xiapi.Image()
     print('Starting data acquisition...')
     cam.start_acquisition()
-    if stackflag == None :
-        print("Acquiring new Stacks !")
-        cam.get_image(img)
-        frame = img.get_image_data_numpy()
-        frame = cv2.flip(frame, 0)  # flip the frame vertically
-        frame = cv2.flip(frame, 1)
-        roimain=cv2.selectROI("Main Bead select",frame)
-        cv2.destroyAllWindows()
-        roiref =cv2.selectROI("Main ref select",frame)
-        cv2.destroyAllWindows()
-        cv2.waitKey(2)
-        
-        KEITHLEY1_VALUE = 1
-        KEITHLEY1_VALUE_STEPSIZE = 0.005 #10mV
-        while frame_count < stacksize :
-            
-            tmc_dac.write("INST:NSEL 1")
-            tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE))
-            KEITHLEY1_VALUE += KEITHLEY1_VALUE_STEPSIZE
-            frame_count +=1
-            time.sleep(0.1)
-            cam.get_image(img)
-            frame = img.get_image_data_numpy()
-            frame = cv2.flip(frame, 0)  # flip the frame vertically
-            frame = cv2.flip(frame, 1)
-            stack.append(work(frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])]))
-            stackref.append(work(frame[int(roiref[1]):int(roiref[1]+roiref[3]), int(roiref[0]):int(roiref[0]+roiref[2])]))
-            with open('stack.pkl', 'wb') as f:
-                load=[stack,stackref,roimain,roiref]
-                pickle.dump(load, f)
-                f.close()
-        tmc_dac.write("INST:NSEL 1")
-        tmc_dac.write("VOLT %.3f"%((KEITHLEY1_VALUE - KEITHLEY1_VALUE_STEPSIZE*stacksize/2)))
-    else:
+    if stackflag :
         print("Loading Stacks and ROI from :",stackflag)
-        with open(stackflag, 'rb') as f:  
+        with open("stack.pkl", 'rb') as f:  
             load = pickle.load(f)
             stack = load[0]
             stackref = load[1]
             roimain = load[2]
             roiref = load[3]
             f.close()
+    D = multiprocessing.Process(target=graphdisplayworker, args=[graph_q],daemon = True)
+    R = multiprocessing.Process(target=record, args=[display_q],daemon = True)
+    Drift = multiprocessing.Process(target=drift, args=[drift_q,stackref],daemon = True)
 
+   
     print("SELECTED ROIs :",roimain,roiref)
     print("Stack Size :",len(stack))
     cv2.destroyAllWindows()
@@ -292,6 +271,7 @@ if __name__ == '__main__':
     cv2.waitKey(2)
     R.start()
     D.start()
+    Drift.start()
     fps = FPS().start()
     cv2.waitKey(2)
     frame_count=0
@@ -304,41 +284,28 @@ if __name__ == '__main__':
             frame = cv2.flip(frame, 1)
             input_q.put([timenow,frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])]])
             frame_count +=1
-            # input_qref.put([time.time(),frame[int(roi2[1]):int(roi2[1]+roi2[3]), int(roi2[0]):int(roi2[0]+roi2[2])]])
             if frame_count%1000==0:
                 cv2.imshow("Live",frame)
                 cv2.waitKey(1)
+            if frame_count%100 ==0:
+                drift_q.put(frame[int(roiref[1]):int(roiref[1]+roiref[3]), int(roiref[0]):int(roiref[0]+roiref[2])])
             if output_q.empty():
                 pass  # fill up queue
             else:
                 frame_count += 1
-                # dummylist=[]
                 for i in range(output_q.qsize()):
-                    # dummylist.append((quit,output_q.get()))
                     display_q.put((quit,output_q.get()))
                     fps.update()
-                # dummylist.sort()
-                # for i in dummylist:
-                #     display_q.put(i)
                  
     except KeyboardInterrupt:
         fps.stop()    
         quit = True
-        
-        # display_q.put((quit,output_q.get()))
         time.sleep(4)
-        # D.terminate()
-        # R.terminate()
-
-        # for process in all_processes:
-        #     process.terminate()
         cam.stop_acquisition()
         cam.close_device() 
         print('[INFO] elapsed time (total): {:.2f}'.format(fps.elapsed()))
         print('[INFO] approx. FPS: {:.2f}'.format(fps.fps()))
         os._exit(1)
-        # sys.exit()
-        pass 
                 
     
     
