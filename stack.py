@@ -175,43 +175,43 @@ if __name__ == '__main__':
     tmc_dac.write("SYST:REM")
     tmc_id = tmc_dac.ask("*IDN?")
     try:
-    #     tmc_dac.write("INSTrument:SELect CH1")
-    #     #tmc_dac.write("INSTrument:SELect CH2")
-    #     tmc_dac.write("APPLY CH1,1.0V,0.1A")
-    #     #tmc_dac.write("APPLY CH2,0.0V,0.0A")
-    #     tmc_dac.write("OUTPUT ON")
+        tmc_dac.write("INSTrument:SELect CH1")
+        tmc_dac.write("INSTrument:SELect CH2")
+        tmc_dac.write("APPLY CH1,1.0V,0.1A")
+        tmc_dac.write("APPLY CH2,0.0V,0.0A")
+        tmc_dac.write("OUTPUT ON")
         tmc_dac.write("SYST:BEEP")
-    #     time.sleep(0.3)
+    #    time.sleep(0.3)
     except:
         tmc_dac = None
         print("KEITHLEY DAC: NOT FOUND")
         time.sleep(0.5)
 
 
-    def aquirestack(frame,roimain,roiref,stacksize,frame_count):
+    # def aquirestack(frame,roimain,roiref,stacksize,frame_count):
     
-        KEITHLEY1_VALUE = 1
-        KEITHLEY1_VALUE_STEPSIZE = 0.005 #10mV
-        if frame_count < stacksize:
-            stack.append(frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])])
-            stackref.append(frame[int(roiref[1]):int(roiref[1]+roiref[3]), int(roiref[0]):int(roiref[0]+roiref[2])])
-            tmc_dac.write("INST:NSEL 1")
-            tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE))
-            KEITHLEY1_VALUE += KEITHLEY1_VALUE_STEPSIZE
-            frame_count +=1
-        else:
-            tmc_dac.write("INST:NSEL 1")
-            tmc_dac.write("VOLT %.3f"%((KEITHLEY1_VALUE - KEITHLEY1_VALUE_STEPSIZE*stacksize/2)))
+    #     KEITHLEY1_VALUE = 1
+    #     KEITHLEY1_VALUE_STEPSIZE = 0.005 #10mV
+    #     if frame_count < stacksize:
+    #         stack.append(frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])])
+    #         stackref.append(frame[int(roiref[1]):int(roiref[1]+roiref[3]), int(roiref[0]):int(roiref[0]+roiref[2])])
+    #         tmc_dac.write("INST:NSEL 1")
+    #         tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE))
+    #         KEITHLEY1_VALUE += KEITHLEY1_VALUE_STEPSIZE
+    #         frame_count +=1
+    #     else:
+    #         tmc_dac.write("INST:NSEL 1")
+    #         tmc_dac.write("VOLT %.3f"%((KEITHLEY1_VALUE - KEITHLEY1_VALUE_STEPSIZE*stacksize/2)))
     cam = xiapi.Camera()
     print('Opening first camera...')
     cam.open_device()
     cam.set_exposure(1000)
-    cam.set_param('width',512)
-    cam.set_param('height',512)
+    cam.set_param('width',256)
+    cam.set_param('height',256)
     cam.set_param('downsampling_type', 'XI_SKIPPING')
     cam.set_acq_timing_mode('XI_ACQ_TIMING_MODE_FREE_RUN')
     qu_limit = 192
-    workers = 48
+    workers = 96
     threadn = cv2.getNumberOfCPUs() 
     print("Threads : ", threadn)
     print("Workers Spawned : ", workers)
@@ -258,7 +258,7 @@ if __name__ == '__main__':
             tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE))
             KEITHLEY1_VALUE += KEITHLEY1_VALUE_STEPSIZE
             frame_count +=1
-            time.sleep(0.3)
+            time.sleep(0.1)
             cam.get_image(img)
             frame = img.get_image_data_numpy()
             frame = cv2.flip(frame, 0)  # flip the frame vertically
@@ -294,26 +294,32 @@ if __name__ == '__main__':
     D.start()
     fps = FPS().start()
     cv2.waitKey(2)
+    frame_count=0
     try:
         while quit == False :
+            timenow = time.time()
             cam.get_image(img)
             frame = img.get_image_data_numpy()
             frame = cv2.flip(frame, 0)  # flip the frame vertically
             frame = cv2.flip(frame, 1)
-            input_q.put([time.time(),frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])]])
+            input_q.put([timenow,frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])]])
+            frame_count +=1
             # input_qref.put([time.time(),frame[int(roi2[1]):int(roi2[1]+roi2[3]), int(roi2[0]):int(roi2[0]+roi2[2])]])
-        
+            if frame_count%1000==0:
+                cv2.imshow("Live",frame)
+                cv2.waitKey(1)
             if output_q.empty():
                 pass  # fill up queue
             else:
                 frame_count += 1
-                dummylist=[]
+                # dummylist=[]
                 for i in range(output_q.qsize()):
-                    dummylist.append((quit,output_q.get()))
+                    # dummylist.append((quit,output_q.get()))
+                    display_q.put((quit,output_q.get()))
                     fps.update()
-                dummylist.sort()
-                for i in dummylist:
-                    display_q.put(i)
+                # dummylist.sort()
+                # for i in dummylist:
+                #     display_q.put(i)
                  
     except KeyboardInterrupt:
         fps.stop()    
@@ -332,7 +338,6 @@ if __name__ == '__main__':
         print('[INFO] approx. FPS: {:.2f}'.format(fps.fps()))
         os._exit(1)
         # sys.exit()
-
         pass 
                 
     
