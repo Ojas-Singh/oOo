@@ -14,8 +14,8 @@ from scipy.optimize import leastsq
 import usbtmc
 from numba import jit
 matplotlib.use("Qt5agg")
-import click
-import sys
+from termcolor import colored
+import config as config
 sys.tracebacklimit=0
 
 def work(frame,stackref):
@@ -41,7 +41,6 @@ def work(frame,stackref):
     except Exception as error:
         pass
     
-
 @jit(nopython=True)
 def correlation_coefficient( patch1, patch2):
     product = np.mean((patch1 - patch1.mean()) * (patch2 - patch2.mean()))
@@ -51,14 +50,15 @@ def correlation_coefficient( patch1, patch2):
     else:
         product /= stds
         return product
+
 @jit(nopython=True)
 def gauss_erf(p,x,y):#p = [height, mean, sigma]
 	return y - p[0] * np.exp(-(x-p[1])**2 /(2.0 * p[2]**2))
+
 @jit(nopython=True)
 def gauss_eval(x,p):
 	return p[0] * np.exp(-(x-p[1])**2 /(2.0 * p[2]**2))
 
-# @jit(nopython=False)
 def gaussianFit(X,Y):
 	size = len(X)
 	maxy = max(Y)
@@ -77,53 +77,35 @@ def gaussianFit(X,Y):
 	except:
 		return None
 	if plsq[1] > 4:
-		# print('fit failed')
 		return None
 
 	par = plsq[0]
-	# Xmore = np.linspace(X[0],X[-1],100)
-	# Y = gauss_eval(Xmore, par)
-    # Y = 1
-    # return par[1],Xmore,Y 
 	return par[1]
 
 
 def worker(input_q, output_q,stack):
-    RESIZE = 128
     while True:
         frameinfo = input_q.get() 
-        
         if frameinfo[1] is not None :
-            # frame = cv2.resize(frameinfo[1],(RESIZE,RESIZE),interpolation = cv2.INTER_NEAREST)
             f = np.fft.fft2(frameinfo[1])
             fshift = np.fft.fftshift(f)
             magnitude_spectrum = 20*np.log(np.abs(fshift))
             magnitude_spectrum = np.asarray(magnitude_spectrum, dtype=np.uint8)
-            # print(magnitude_spectrum.shape)
             centroid = None
-            R = 4 * RESIZE / 10
             corr = []
             l1= len(magnitude_spectrum[0])
             l2= len(magnitude_spectrum[1])
-            # print(l1,l2)
             for img in stack:
-                # corr.append(correlation_coefficient(img, comp_roi.getArrayRegion(magnitude_spectrum)))
                 corr.append(correlation_coefficient(img[int(l1*0.45):int(l1*0.55),int(l2*0.45):int(l2*0.55)], magnitude_spectrum[int(l1*0.45):int(l1*0.55),int(l2*0.45):int(l2*0.55)]))
-                # corr.append(correlation_coefficient(img, magnitude_spectrum))
-
             X = np.array(range(len(stack)))
             corr = np.array(corr)
             corr -= min(corr)
-            #self.extracted_view.setData(X, corr)
             try:
-                # centroid, X, corr = gaussianFit(X, corr)
                 centroid = gaussianFit(X, corr)
-                #self.fitted_view.setData(X, corr)
                 output_q.put([frameinfo[0],centroid])
             except Exception as error:
                 pass
-         
-            
+             
 def graphdisplayworker(graph_q):
     fig = plt.figure(figsize=(16, 3))
     data = [[],[]]
@@ -131,7 +113,6 @@ def graphdisplayworker(graph_q):
     fig.show()
     timestart = time.time()
     while True:
-        
         if quit:
             break
         for j in range(graph_q.qsize()):
@@ -139,12 +120,13 @@ def graphdisplayworker(graph_q):
             data[0].append(timestamp-timestart)
             data[1].append(centroid)
         timenowplot = time.time()
-
         ax.plot(data[0], data[1], color='b' ,linewidth=.2)
-        plt.pause(0.5)
+        plt.pause(0.02)
         ax.set_xlim(left=max(0, timenowplot-timestart-10), right=timenowplot-timestart+1.25)
         plt.show(block=False)
         time.sleep(.02)
+        if (timenowplot - timestart ) > 20:
+            data = [[],[]]
        
 def record(display_q):
     results = []
@@ -162,9 +144,9 @@ def record(display_q):
         for i in results:
             f.write(str(i[0]-timestart)+" "+str(i[1])+"\n")
         f.close()
-        print("written to file results.pkl !")
+        print("written to file results.txt !")
 
-def drift(drift_q,stackref):
+def drift(centroid_avg):
     tmc_dac = usbtmc.Instrument(0x05e6, 0x2230)
     tmc_dac.write("INSTrument:COMBine:OFF")
     tmc_dac.write("SYST:REM")
@@ -184,34 +166,67 @@ def drift(drift_q,stackref):
     KEITHLEY1_VALUE = 1.5
     tmc_dac.write("INST:NSEL 1")
     tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE))
-    list =[]
     while True:
+        avg= centroid_avg.get()
+        if avg is not None:
+           
+            if avg >60.0 :
+                print("move key down :",avg)
+                tmc_dac.write("INST:NSEL 1")
+                tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE - 0.002))
+                KEITHLEY1_VALUE = KEITHLEY1_VALUE -0.002
+                time.sleep(0.1)
+            elif avg < 40.0:
+                print("move key up :",avg)
+                tmc_dac.write("INST:NSEL 1")
+                tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE + 0.002))
+                KEITHLEY1_VALUE = KEITHLEY1_VALUE +0.002
+                time.sleep(0.1)
+
+def ref_centroid(drift_q,centroid_avg,stackref):
+    list = []
+    avg = None
+    while True:
+        if drift_q.qsize() > 0 :
+            for i in range(drift_q.qsize()):
+                list.append(drift_q.get())
+            if len(list) >10 :
+                
+                centroid_list= []
+                for i in list :
+                    pp = work(i,stackref)
+                    if pp is not None:
+                        centroid_list.append(pp) 
+                # print(centroid_list)
+                avg = sum(centroid_list)/len(centroid_list)
+                list = []
+        centroid_avg.put(avg)
+        # print(avg)
         
-        centroid_list= []
-        for i in range(drift_q.qsize()):
-            list.append(drift_q.get())
-        if len(list) >10 :
-            for i in list :
-                pp = work(i,stackref)
-                if pp is not None:
-                    centroid_list.append(pp)
-            print(centroid_list)
-            while sum(centroid_list)/len(centroid_list) >60 :
-                tmc_dac.write("INST:NSEL 1")
-                tmc_dac.write("VOLT %.3f"%((KEITHLEY1_VALUE*1000 - 2)/1000.0))
-            if sum(centroid_list)/len(centroid_list) < 40:
-                tmc_dac.write("INST:NSEL 1")
-                tmc_dac.write("VOLT %.3f"%((KEITHLEY1_VALUE*1000 + 2)/1000.0))
-            list=[]
 
 if __name__ == '__main__':
 
-    click.echo(click.style("         ____       " , fg='red'))
-    click.echo(click.style("        / __ \       ", fg='red'))
-    click.echo(click.style("   ___ | |  | | ___  ", fg='red'))
-    click.echo(click.style("  / _ \| |  | |/ _ \ ", fg='red'))
-    click.echo(click.style(" | (_) | |__| | (_) |", fg='red'))
-    click.echo(click.style("  \___/ \____/ \___/ ", fg='red'))
+    print(colored(" ", 'yellow')    )                                                
+    print(colored("  ", 'yellow')     )                                              
+    print(colored("                      OOOOOOOOO                      ", 'yellow'))
+    print(colored("                    OO:::::::::OO                    ", 'yellow'))
+    print(colored("                  OO:::::::::::::OO                  ", 'yellow'))
+    print(colored("                 O:::::::OOO:::::::O                 ", 'yellow'))
+    print(colored("   ooooooooooo   O::::::O   O::::::O   ooooooooooo   ", 'yellow'))
+    print(colored(" oo:::::::::::oo O:::::O     O:::::O oo:::::::::::oo ", 'yellow'))
+    print(colored("o:::::::::::::::oO:::::O     O:::::Oo:::::::::::::::o", 'yellow'))
+    print(colored("o:::::ooooo:::::oO:::::O     O:::::Oo:::::ooooo:::::o", 'yellow'))
+    print(colored("o::::o     o::::oO:::::O     O:::::Oo::::o     o::::o", 'yellow'))
+    print(colored("o::::o     o::::oO:::::O     O:::::Oo::::o     o::::o", 'yellow'))
+    print(colored("o::::o     o::::oO:::::O     O:::::Oo::::o     o::::o", 'yellow'))
+    print(colored("o::::o     o::::oO::::::O   O::::::Oo::::o     o::::o", 'yellow'))
+    print(colored("o:::::ooooo:::::oO:::::::OOO:::::::Oo:::::ooooo:::::o", 'yellow'))
+    print(colored("o:::::::::::::::o OO:::::::::::::OO o:::::::::::::::o", 'yellow'))
+    print(colored(" oo:::::::::::oo    OO:::::::::OO    oo:::::::::::oo ", 'yellow'))
+    print(colored("   ooooooooooo        OOOOOOOOO        ooooooooooo   ", 'yellow'))
+    print(colored("                                                     ", 'yellow'))    
+    print(colored(" ", 'yellow') )
+
 
 
     stackflag = True
@@ -224,15 +239,13 @@ if __name__ == '__main__':
     cam.set_param('height',256)
     cam.set_param('downsampling_type', 'XI_SKIPPING')
     cam.set_acq_timing_mode('XI_ACQ_TIMING_MODE_FREE_RUN')
-    qu_limit = 192
-    workers = 96
+    qu_limit = config.qu_limit
+    workers = config.workers
     threadn = cv2.getNumberOfCPUs() 
     print("Threads : ", threadn)
     print("Workers Spawned : ", workers)
-    input_q = Queue(qu_limit)
-    input_qref = Queue(qu_limit)   # fps is better if queue is higher but then more lags
+    input_q = Queue(qu_limit)   # fps is better if queue is higher but then more lags
     frame_count = 0
-    stacksize = 200
     stack=[]
     stackref=[]
     roiref = None
@@ -241,6 +254,7 @@ if __name__ == '__main__':
     display_q = Queue()
     graph_q = Queue()
     drift_q = Queue(20)
+    centroid_avg = Queue(1)
     quit = False
     all_processes = []
     img = xiapi.Image()
@@ -257,7 +271,8 @@ if __name__ == '__main__':
             f.close()
     D = multiprocessing.Process(target=graphdisplayworker, args=[graph_q],daemon = True)
     R = multiprocessing.Process(target=record, args=[display_q],daemon = True)
-    Drift = multiprocessing.Process(target=drift, args=[drift_q,stackref],daemon = True)
+    Drift = multiprocessing.Process(target=drift, args=[centroid_avg],daemon = True)
+    ref_work = multiprocessing.Process(target=ref_centroid, args=[drift_q,centroid_avg,stackref],daemon = True)
 
    
     print("SELECTED ROIs :",roimain,roiref)
@@ -271,7 +286,9 @@ if __name__ == '__main__':
     cv2.waitKey(2)
     R.start()
     D.start()
+    ref_work.start()
     Drift.start()
+    
     fps = FPS().start()
     cv2.waitKey(2)
     frame_count=0
@@ -284,7 +301,7 @@ if __name__ == '__main__':
             frame = cv2.flip(frame, 1)
             input_q.put([timenow,frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])]])
             frame_count +=1
-            if frame_count%1000==0:
+            if frame_count%500==0:
                 cv2.imshow("Live",frame)
                 cv2.waitKey(1)
             if frame_count%100 ==0:
