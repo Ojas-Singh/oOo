@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import time
 import multiprocessing
-from multiprocessing import Pool, Queue,  Pipe
+from multiprocessing import Pool, Queue,  Pipe,Value
 import sys,os
 import pickle
 import matplotlib
@@ -154,7 +154,7 @@ def record(display_q):
         f.close()
         print("written to file results.txt !")
 
-def drift(pipe):
+def drift(centroid_avg):
     tmc_dac = usbtmc.Instrument(0x05e6, 0x2230)
     tmc_dac.write("INSTrument:COMBine:OFF")
     tmc_dac.write("SYST:REM")
@@ -174,10 +174,11 @@ def drift(pipe):
     KEITHLEY1_VALUE = 2.5
     tmc_dac.write("INST:NSEL 1")
     tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE))
-    p_output, p_input = pipe
-    p_input.close()
+    # p_output, p_input = pipe
+    # p_input.close()
     while True:
-        avg= p_output.recv() 
+        # avg= p_output.recv() 
+        avg = centroid_avg.value
         if avg is not None:
            
             if avg >60.0 :
@@ -193,11 +194,11 @@ def drift(pipe):
                 KEITHLEY1_VALUE = KEITHLEY1_VALUE +0.001
                 time.sleep(0.02)
 
-def ref_centroid(driftoutput_q,pipe,stackref):
+def ref_centroid(driftoutput_q,centroid_avg,stackref):
     list = []
     avg = None
-    p_output, p_input = pipe
-    p_output.close()
+    # p_output, p_input = pipe
+    # p_output.close()
     while True:
         if driftoutput_q.qsize() > 0 :
             for i in range(driftoutput_q.qsize()):
@@ -211,7 +212,8 @@ def ref_centroid(driftoutput_q,pipe,stackref):
             # print(centroid_list)
             avg = sum(centroid_list)/len(centroid_list)
             list = []
-        p_input.send(avg)
+        centroid_avg.value = avg
+        # p_input.send(avg)
         # print(avg)
         
 
@@ -267,7 +269,8 @@ if __name__ == '__main__':
     display_q = Queue()
     graph_q = Queue()
     drift_q = Queue()
-    p_output, p_input = Pipe()
+    # p_output, p_input = Pipe()
+    centroid_avg =Value('d', 0.0)
     quit = False
     all_processes = []
     img = xiapi.Image()
@@ -284,8 +287,8 @@ if __name__ == '__main__':
             f.close()
     D = multiprocessing.Process(target=graphdisplayworker, args=[graph_q],daemon = True)
     R = multiprocessing.Process(target=record, args=[display_q],daemon = True)
-    Drift = multiprocessing.Process(target=drift, args=[(p_output, p_input)],daemon = True)
-    ref_work = multiprocessing.Process(target=ref_centroid, args=[driftoutput_q,(p_output, p_input),stackref],daemon = True)
+    Drift = multiprocessing.Process(target=drift, args=[centroid_avg],daemon = True)
+    ref_work = multiprocessing.Process(target=ref_centroid, args=[driftoutput_q,centroid_avg,stackref],daemon = True)
 
    
     print("SELECTED ROIs :",roimain,roiref)
