@@ -102,6 +102,7 @@ def driftworker(drift_q, driftoutput_q,stackref):
             try:
                 centroid = gaussianFit(X, corr)
                 driftoutput_q.put(centroid)
+                # print(centroid)
             except Exception as error:
                 pass             
 def graphdisplayworker(graph_q):
@@ -179,22 +180,22 @@ def drift(centroid_avg):
     while True:
         # avg= p_output.recv() 
         avg = centroid_avg.value
-        if avg is not None:
+        if avg !=0.0:
            
             if avg >60.0 :
                 print("move key down :",avg)
                 tmc_dac.write("INST:NSEL 1")
                 tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE - 0.001))
                 KEITHLEY1_VALUE = KEITHLEY1_VALUE -0.001
-                time.sleep(0.02)
-            elif avg < 40.0:
+                time.sleep(0.05)
+            elif avg < 58.0:
                 print("move key up :",avg)
                 tmc_dac.write("INST:NSEL 1")
                 tmc_dac.write("VOLT %.3f"%(KEITHLEY1_VALUE + 0.001))
                 KEITHLEY1_VALUE = KEITHLEY1_VALUE +0.001
-                time.sleep(0.02)
+                time.sleep(0.05)
 
-def ref_centroid(driftoutput_q,centroid_avg,stackref):
+def ref_centroid(driftoutput_q,centroid_avg):
     list = []
     avg = None
     # p_output, p_input = pipe
@@ -212,7 +213,8 @@ def ref_centroid(driftoutput_q,centroid_avg,stackref):
             # print(centroid_list)
             avg = sum(centroid_list)/len(centroid_list)
             list = []
-        centroid_avg.value = avg
+            centroid_avg.value = avg
+            print(centroid_avg.value)
         # p_input.send(avg)
         # print(avg)
         
@@ -288,7 +290,7 @@ if __name__ == '__main__':
     D = multiprocessing.Process(target=graphdisplayworker, args=[graph_q],daemon = True)
     R = multiprocessing.Process(target=record, args=[display_q],daemon = True)
     Drift = multiprocessing.Process(target=drift, args=[centroid_avg],daemon = True)
-    ref_work = multiprocessing.Process(target=ref_centroid, args=[driftoutput_q,centroid_avg,stackref],daemon = True)
+    ref_work = multiprocessing.Process(target=ref_centroid, args=[driftoutput_q,centroid_avg],daemon = True)
 
    
     print("SELECTED ROIs :",roimain,roiref)
@@ -325,7 +327,7 @@ if __name__ == '__main__':
                 cv2.imshow("Live",frame)
                 cv2.waitKey(1)
             if frame_count%10 ==0:
-                drift_q.put(frame[int(roiref[1]):int(roiref[1]+roiref[3]), int(roiref[0]):int(roiref[0]+roiref[2])])
+                drift_q.put([timenow,frame[int(roiref[1]):int(roiref[1]+roiref[3]), int(roiref[0]):int(roiref[0]+roiref[2])]])
             if output_q.empty():
                 pass  # fill up queue
             else:
