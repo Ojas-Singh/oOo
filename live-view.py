@@ -1,4 +1,3 @@
-
 from ximea import xiapi
 from imutils.video import FPS
 import cv2
@@ -25,6 +24,41 @@ def work(frame):
     
     return magnitude_spectrum
 
+def avgframe(list):
+    rAvg = None
+    total = 0
+    for frame in list:
+        if rAvg is None:
+            rAvg = frame
+        # otherwise, compute the weighted average between the history of
+        # frames and the current frames
+        else:
+            rAvg = ((total * rAvg) + (1 * frame)) / (total + 1.0)
+
+    avg = rAvg
+    return avg 
+
+
+# def avgframe(list):
+#     (rAvg, gAvg, bAvg) = (None, None, None)
+#     total = 0
+#     for frame in list:
+#         (B, G, R) = cv2.split(frame.astype("float"))
+#         if rAvg is None:
+#             rAvg = R
+#             bAvg = B
+#             gAvg = G
+#         # otherwise, compute the weighted average between the history of
+#         # frames and the current frames
+#         else:
+#             rAvg = ((total * rAvg) + (1 * R)) / (total + 1.0)
+#             gAvg = ((total * gAvg) + (1 * G)) / (total + 1.0)
+#             bAvg = ((total * bAvg) + (1 * B)) / (total + 1.0)
+
+#     avg = cv2.merge([bAvg, gAvg, rAvg]).astype("uint8")
+#     return avg 
+
+
 if __name__ == '__main__':
     tmc_dac = usbtmc.Instrument(0x05e6, 0x2230)
     tmc_dac.write("INSTrument:COMBine:OFF")
@@ -33,7 +67,7 @@ if __name__ == '__main__':
     try:
         tmc_dac.write("INSTrument:SELect CH1")
         tmc_dac.write("INSTrument:SELect CH2")
-        tmc_dac.write("APPLY CH1,1.0V,0.1A")
+        tmc_dac.write("APPLY CH1,2.0V,0.1A")
         tmc_dac.write("APPLY CH2,0.0V,0.0A")
         tmc_dac.write("OUTPUT ON")
         tmc_dac.write("SYST:BEEP")
@@ -47,8 +81,8 @@ if __name__ == '__main__':
     print('Opening first camera...')
     cam.open_device()
     cam.set_exposure(1000)
-    cam.set_param('width',256)
-    cam.set_param('height',256)
+    cam.set_param('width',1024)
+    cam.set_param('height',1024)
     cam.set_param('downsampling_type', 'XI_SKIPPING')
     cam.set_acq_timing_mode('XI_ACQ_TIMING_MODE_FREE_RUN')
 
@@ -64,9 +98,24 @@ if __name__ == '__main__':
         frame = img.get_image_data_numpy()
         frame = cv2.flip(frame, 0)  # flip the frame vertically
         frame = cv2.flip(frame, 1)
+        frame =  cv2.rectangle(frame, (512,512),(1024,1024) , (255, 0, 0), 1)
         cv2.imshow("frame",frame)
         fps.update() 
-        key = cv2.waitKey(1) & 0xFF
+        key = cv2.waitKey(2) & 0xFF
+        # if the `q` key was pressed, break from the loop
+        if key == ord('q'):
+            break
+        cv2.waitKey(1)
+    cam.set_param('width',512)
+    cam.set_param('height',512)
+    while True :
+        cam.get_image(img)
+        frame = img.get_image_data_numpy()
+        frame = cv2.flip(frame, 0)  # flip the frame vertically
+        frame = cv2.flip(frame, 1)
+        cv2.imshow("frame",frame)
+        fps.update() 
+        key = cv2.waitKey(2) & 0xFF
         # if the `q` key was pressed, break from the loop
         if key == ord('q'):
             break
@@ -98,11 +147,11 @@ if __name__ == '__main__':
         cv2.waitKey(1)
     cv2.destroyAllWindows()
     frame_count = 0
-    stacksize = 200
+    stacksize = 1000
     stack=[]
     stackref=[]
-    KEITHLEY1_VALUE = 1
-    KEITHLEY1_VALUE_STEPSIZE = 0.005 #10mV
+    KEITHLEY1_VALUE = 2
+    KEITHLEY1_VALUE_STEPSIZE = 0.001 #10mV
     while frame_count < stacksize :
         
         tmc_dac.write("INST:NSEL 1")
@@ -110,11 +159,16 @@ if __name__ == '__main__':
         KEITHLEY1_VALUE += KEITHLEY1_VALUE_STEPSIZE
         frame_count +=1
         time.sleep(0.1)
-        cam.get_image(img)
-        frame = img.get_image_data_numpy()
-        frame = cv2.flip(frame, 0)  # flip the frame vertically
-        frame = cv2.flip(frame, 1)
-        stack.append(work(frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])]))
+        lis = []
+        for i in range(100):
+        
+            cam.get_image(img)
+            frame = img.get_image_data_numpy()
+            frame = cv2.flip(frame, 0)  # flip the frame vertically
+            frame = cv2.flip(frame, 1)
+            lis.append(frame[int(roimain[1]):int(roimain[1]+roimain[3]), int(roimain[0]):int(roimain[0]+roimain[2])])
+        avg = avgframe(lis)
+        stack.append(work(avg))
         cam.get_image(img)
         frame = img.get_image_data_numpy()
         frame = cv2.flip(frame, 0)  # flip the frame vertically
