@@ -11,7 +11,7 @@ print('Opening first camera...')
 cam.open_device()
 
 #setting
-cam.set_exposure(1000)
+cam.set_exposure(1800)
 
 cam.set_param('width',512)
 cam.set_param('height',512)

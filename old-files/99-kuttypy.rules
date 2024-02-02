@@ -1,2 +1,0 @@
-SUBSYSTEM=="usb",ATTRS{idVendor}=="05e6", ATTRS{idProduct}=="2230", MODE="666"
-ATTRS{idVendor}=="05e6", ATTRS{idProduct}=="2230", ENV{ID_MM_DEVICE_IGNORE}="1"

@@ -1,0 +1,11 @@
+ximea-py
+imutils
+opencv-python
+numpy
+termcolor
+config
+FKA
+matplotlib
+scipy
+numba
+pipython
