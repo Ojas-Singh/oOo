@@ -1,13 +1,14 @@
 # oOo
+
 oOo is a High-Performance Parallel Magnetic Tweezer program for real-time monitoring of protein folding and unfolding under force.
 
-##### Usual Model [Sequential and single threaded]
+##### Usual Method [Sequential and single threaded]
 
 ![](https://raw.githubusercontent.com/Ojas-Singh/oOo/master/docs/1.PNG)
 
 
 
-##### Our Model [Concurrent]
+##### Our Method [Concurrent]
 
 ![](https://raw.githubusercontent.com/Ojas-Singh/oOo/master/docs/2.PNG)
 
@@ -41,8 +42,8 @@ python oOo.py [arg1] [arg2]
 ```
 Usage: [arg1] can be 
     fresh       ->     To take fresh stack.
-    start       ->     start data aquisition.
-    plot        ->     plot the collected data. with [arg2] as bead number.
+    start       ->     Start data aquisition.
+    plot        ->     Plot the collected data with [arg2] as bead number.
     stackplot   ->     Plot stack graph.
 ```
 
