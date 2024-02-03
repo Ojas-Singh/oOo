@@ -26,7 +26,7 @@ To get started with this project, you'll need to have Python 3.8 and its depende
 
 1. **Python 3.8**: Visit the official Python website at [python.org](https://www.python.org) and download the Python 3.8 installer for your operating system.
 2. **Ximea Drivers** : Visit [Ximea](https://www.ximea.com/support/wiki/apis/Python) and install the camera drivers then install the [xiAPI](https://www.ximea.com/support/wiki/apis/XIMEA_Linux_Software_Package#Installation).
-
+ ( We have used https://www.ximea.com/support/attachments/37/XIMEA_API_Installer.exe with all API option ticked while installing and the used this guide to install ximea python API https://www.ximea.com/support/wiki/apis/Python_inst_win )
     ```bash
     python camtest.py
     ```
