@@ -13,6 +13,13 @@ oOo is a High-Performance Parallel Magnetic Tweezer program for real-time monito
 ![](https://raw.githubusercontent.com/Ojas-Singh/oOo/master/docs/2.PNG)
 
 
+
+# System and Hardware Requirements
++ Windows
++ Ximea camera (xiQ USB 3.0 SuperSpeed)
++ Piezo Controller (P-725.xDDPIFOC adnd PI-E-709)
+  ( We tested on AMD threadripper Pro 3975wx 32 core 3.5Ghz 64GB RAM 64Bit Windows 10 Pro 20H2 )
+
 ## Installation
 
 To get started with this project, you'll need to have Python 3.8 and its dependencies installed on your machine. Here's how you can do it:
