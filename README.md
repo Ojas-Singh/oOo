@@ -63,16 +63,6 @@ driftworker = 4         # Number of workers for drift calculation
 ```
 
 
-## License
-
-Copyright (C) 2024 Ojas-Singh
-
-All rights reserved.
-
-This software and associated documentation files (the "Software") may not be used, copied, modified, merged, distributed, sublicensed, and/or sold without the express permission of the copyright owner.
-
-
-## Citation
 
 
 
