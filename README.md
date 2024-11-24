@@ -70,6 +70,11 @@ driftworker = 4         # Number of workers for drift calculation
 ```
 
 
+# Cite
+
+Pritam Saha, Vishavdeep Vashisht, Ojas Singh, Amin Sagar, Gaurav Bhati, Surbhi Garg, Sabyasachi Rakshi. Exploring Force-Driven Stochastic Folding Dynamics in Mechano-Responsive Proteins and Implications in Phenotypic Variation. (In press)
+
+Please feel free to contact the corresponding author (srakshit@iisermohali.ac.in) through mail in case of any difficulty in installation and running the codes.
 
 
 
